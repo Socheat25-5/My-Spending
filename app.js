@@ -9,15 +9,17 @@
     // ═══════════════════════════════════
     //  SUPABASE SQL CONFIGURATION
     // ═══════════════════════════════════
-   const SUPABASE_URL = 'https://your-project-url.supabase.co';
-   const SUPABASE_ANON_KEY = 'your-anon-api-key';
+   const SUPABASE_URL = 'https://nmrqyvympwudullhqucb.supabase.co';
+   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tcnF5dnltcHd1ZHVsbGhxdWNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3ODY2ODMsImV4cCI6MjA5ODM2MjY4M30.UpMWxG6xbZyKxaXdPKSZgci2bR8lcL7szjxVBZRCSMQ';
     
     // Auto-detect configuration state (fallbacks to LocalStorage if not configured)
     const isSupabaseConfigured = 
         SUPABASE_URL !== 'https://your-project-url.supabase.co' && 
         SUPABASE_ANON_KEY !== 'your-anon-api-key' &&
         SUPABASE_URL.trim() !== '' &&
-        SUPABASE_ANON_KEY.trim() !== '';
+        SUPABASE_ANON_KEY.trim() !== '' &&
+        !SUPABASE_URL.includes('your-project-url') &&
+        !SUPABASE_ANON_KEY.includes('your-anon-api');
     
     let supabase = null;
     if (isSupabaseConfigured && window.supabase) {
