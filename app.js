@@ -9,13 +9,11 @@
     // ═══════════════════════════════════
     //  SUPABASE SQL CONFIGURATION
     // ═══════════════════════════════════
-   const SUPABASE_URL = 'https://nmrqyvympwudullhqucb.supabase.co';
-   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tcnF5dnltcHd1ZHVsbGhxdWNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3ODY2ODMsImV4cCI6MjA5ODM2MjY4M30.UpMWxG6xbZyKxaXdPKSZgci2bR8lcL7szjxVBZRCSMQ';
+    const SUPABASE_URL = 'https://jthepexgquhoqqxxewmq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0aGVwZXhncXVob3FxeHhld21xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTU0NDcsImV4cCI6MjA5ODM5MTQ0N30.LgFnYbQZypbAC-VlYdbt0MAIWb5PtavKjZaTHf1gUOo';
     
     // Auto-detect configuration state (fallbacks to LocalStorage if not configured)
     const isSupabaseConfigured = 
-        SUPABASE_URL !== 'https://your-project-url.supabase.co' && 
-        SUPABASE_ANON_KEY !== 'your-anon-api-key' &&
         SUPABASE_URL.trim() !== '' &&
         SUPABASE_ANON_KEY.trim() !== '' &&
         !SUPABASE_URL.includes('your-project-url') &&
@@ -208,7 +206,7 @@
     let currentYear = new Date().getFullYear();
     let activePage = 'home';
     let currentCurrency = localStorage.getItem('spendwise_currency') || '$';
-    let currentLanguage = localStorage.getItem('spendwise_language') || 'km';
+    let currentLanguage = localStorage.getItem('spendwise_language') || 'kh';
 
     // ─── DOM ───
     const $ = (s) => document.querySelector(s);
@@ -558,6 +556,7 @@
             renderAll();
         } catch (err) {
             console.error('syncSupabaseUser error:', err);
+            showToast('Database error: ' + (err.message || 'Could not load profile'), 'error');
         }
     }
 
@@ -572,11 +571,17 @@
             supabase.auth.onAuthStateChange(async (event, session) => {
                 if (session) {
                     await syncSupabaseUser(session.user);
+                    if (event === 'SIGNED_IN') {
+                        switchPage('home');
+                    }
                 } else {
                     currentUser = null;
                     updateProfileUI();
                     expenses = [];
                     renderAll();
+                    if (event === 'SIGNED_OUT') {
+                        switchPage('auth');
+                    }
                 }
             });
         } else {
@@ -591,59 +596,67 @@
     }
 
     function updateProfileUI() {
+        let name = 'Guest User';
+        let email = 'guest@spending.local';
+        let avatar = null;
+        let lang = currentLanguage;
+
         if (currentUser) {
+            name = currentUser.name;
+            email = currentUser.email;
+            avatar = currentUser.avatar;
+            lang = currentUser.language || currentLanguage;
+        } else {
+            name = localStorage.getItem('spendwise_guest_name') || 'Guest User';
+            email = localStorage.getItem('spendwise_guest_email') || 'guest@spending.local';
+            avatar = localStorage.getItem('spendwise_guest_avatar') || null;
+            lang = localStorage.getItem('spendwise_language') || currentLanguage;
+        }
+
+        if (lang) {
+            currentLanguage = lang;
+            localStorage.setItem('spendwise_language', currentLanguage);
+        }
+        
+        applyTranslations(currentLanguage); // Will call setGreeting internally
+        
+        if (avatar) {
             avatarIcon.style.display = 'none';
+            avatarInitials.style.display = 'none';
+            profileAvatarBtn.style.backgroundImage = `url(${avatar})`;
+            profileAvatarBtn.style.backgroundSize = 'cover';
+            profileAvatarBtn.style.backgroundPosition = 'center';
             
-            let users = [];
-            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
-            const userRecord = users.find(u => u.email === currentUser.email) || currentUser;
-            
-            // Apply user-specific language/country settings
-            const activeLang = currentUser.language || userRecord.language;
-            const activeCountry = currentUser.country || userRecord.country;
-            const activeAvatar = currentUser.avatar || userRecord.avatar;
-            
-            if (activeLang) {
-                currentLanguage = activeLang;
-                localStorage.setItem('spendwise_language', currentLanguage);
-            }
-            if (activeCountry) {
-                if (activeCountry === 'cambodia') currentCurrency = '៛';
-                else if (activeCountry === 'thailand') currentCurrency = '฿';
-                localStorage.setItem('spendwise_currency', currentCurrency);
-                updateCurrencyUI();
-            }
-            
-            applyTranslations(currentLanguage); // Will call setGreeting internally
-            
-            if (activeAvatar) {
-                avatarInitials.style.display = 'none';
-                profileAvatarBtn.style.backgroundImage = `url(${activeAvatar})`;
-                profileAvatarBtn.style.backgroundSize = 'cover';
-                profileAvatarBtn.style.backgroundPosition = 'center';
-                
-                dropdownAvatar.textContent = '';
-                dropdownAvatar.style.backgroundImage = `url(${activeAvatar})`;
-                dropdownAvatar.style.backgroundSize = 'cover';
-                dropdownAvatar.style.backgroundPosition = 'center';
-            } else {
-                avatarInitials.style.display = 'block';
-                avatarInitials.textContent = currentUser.name.substring(0, 2).toUpperCase();
-                profileAvatarBtn.style.backgroundImage = '';
-                
-                dropdownAvatar.textContent = currentUser.name.substring(0, 2).toUpperCase();
-                dropdownAvatar.style.backgroundImage = '';
-            }
-            
-            dropdownName.textContent = currentUser.name;
-            dropdownEmail.textContent = currentUser.email;
-            if (authCloseBtn) authCloseBtn.style.display = 'block';
+            dropdownAvatar.textContent = '';
+            dropdownAvatar.style.backgroundImage = `url(${avatar})`;
+            dropdownAvatar.style.backgroundSize = 'cover';
+            dropdownAvatar.style.backgroundPosition = 'center';
         } else {
             avatarIcon.style.display = 'block';
             avatarInitials.style.display = 'none';
             profileAvatarBtn.style.backgroundImage = '';
-            profileDropdown.classList.remove('open');
-            applyTranslations(currentLanguage);
+            
+            dropdownAvatar.textContent = name.substring(0, 2).toUpperCase();
+            dropdownAvatar.style.backgroundImage = '';
+        }
+        
+        dropdownName.textContent = name;
+        dropdownEmail.textContent = email;
+        
+        // Reset dropdown logout button
+        if (currentUser) {
+            profileLogoutBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Logout</span>
+            `;
+            profileLogoutBtn.dataset.action = 'logout';
+            if (authCloseBtn) authCloseBtn.style.display = 'block';
+        } else {
+            profileLogoutBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                <span>Login or Register</span>
+            `;
+            profileLogoutBtn.dataset.action = 'login';
             if (authCloseBtn) authCloseBtn.style.display = 'none';
         }
     }
@@ -655,7 +668,6 @@
                 showToast(error.message, 'error');
             } else {
                 showToast('Logged in successfully!');
-                switchPage('home');
             }
         } else {
             // Simple mock authentication using localStorage users list
@@ -706,9 +718,16 @@
                     });
                 if (profileError) {
                     console.error('Profile creation error:', profileError);
+                    showToast('Failed to create profile: ' + profileError.message, 'error');
                 }
-                showToast('Account created! Please check your email for confirmation.', 'success');
-                switchPage('home');
+                
+                if (data.session) {
+                    showToast('Account created and logged in!', 'success');
+                } else {
+                    showToast('Account created! Please check your email to confirm your address before logging in.', 'success');
+                    const loginTab = $('#auth-tab-login');
+                    if (loginTab) loginTab.click();
+                }
             }
         } else {
             let users = [];
@@ -753,11 +772,7 @@
 
     // ─── Auth Events ───
     profileAvatarBtn.addEventListener('click', () => {
-        if (currentUser) {
-            profileDropdown.classList.toggle('open');
-        } else {
-            switchPage('auth');
-        }
+        profileDropdown.classList.toggle('open');
     });
 
     // Close dropdown when clicking outside
@@ -769,7 +784,11 @@
 
     profileLogoutBtn.addEventListener('click', () => {
         profileDropdown.classList.remove('open');
-        logout();
+        if (profileLogoutBtn.dataset.action === 'login') {
+            switchPage('auth');
+        } else {
+            logout();
+        }
     });
     
     // Auth Tabs
@@ -791,10 +810,10 @@
             const country = authCountrySelect.value;
             if (country === 'cambodia') {
                 authLangSelect.innerHTML = `
-                    <option value="km">🇰🇭 Khmer</option>
+                    <option value="kh">🇰🇭 Khmer</option>
                     <option value="en">🇺🇸 English</option>
                 `;
-                applyTranslations('km');
+                applyTranslations('kh');
             } else if (country === 'thailand') {
                 authLangSelect.innerHTML = `
                     <option value="th">🇹🇭 Thai</option>
@@ -1454,7 +1473,7 @@
 
         if (editingExpenseId) {
             // Update existing expense
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && currentUser) {
                 const { error } = await supabase.from('expenses').update({
                     amount,
                     date,
@@ -1481,7 +1500,7 @@
             updateSubmitButtonText();
         } else {
             // Add new expense
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && currentUser) {
                 const { data, error } = await supabase.from('expenses').insert({
                     amount,
                     date,
@@ -1572,7 +1591,7 @@
 
     modalDeleteBtn.addEventListener('click', async () => {
         if (deleteTargetId) {
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && currentUser) {
                 const { error } = await supabase.from('expenses').delete().eq('id', deleteTargetId);
                 if (error) {
                     showToast('Failed to delete expense from cloud database', 'error');
@@ -1664,12 +1683,50 @@
 
     function importBackup(file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async function(e) {
             try {
                 const data = JSON.parse(e.target.result);
                 if (data && Array.isArray(data.expenses)) {
-                    expenses = data.expenses;
-                    save();
+                    if (isSupabaseConfigured && currentUser) {
+                        showToast('Syncing backup to cloud database...', 'info');
+                        // Clear existing database rows for this user
+                        const { error: deleteErr } = await supabase
+                            .from('expenses')
+                            .delete()
+                            .eq('user_id', currentUser.id);
+                            
+                        if (deleteErr) {
+                            showToast('Failed to clear old cloud database records', 'error');
+                            return;
+                        }
+                        
+                        // Prepare rows
+                        const toInsert = data.expenses.map(exp => ({
+                            amount: parseFloat(exp.amount),
+                            date: exp.date,
+                            description: exp.description || 'Imported Transaction',
+                            category: exp.category || 'other',
+                            user_id: currentUser.id
+                        }));
+                        
+                        if (toInsert.length > 0) {
+                            const { data: inserted, error: insertErr } = await supabase
+                                .from('expenses')
+                                .insert(toInsert)
+                                .select();
+                                
+                            if (insertErr) {
+                                showToast('Failed to upload backup to cloud database', 'error');
+                                return;
+                            }
+                            expenses = inserted || [];
+                        } else {
+                            expenses = [];
+                        }
+                    } else {
+                        expenses = data.expenses;
+                        save();
+                    }
                     
                     if (data.budgets) {
                         saveBudgets(data.budgets);
@@ -1708,41 +1765,51 @@
             btn.classList.toggle('active', btn.dataset.currency === currentCurrency);
         });
         
-        // Show/hide profile section in Settings based on currentUser
+        // Profile section is ALWAYS visible
         const profileSection = $('#settings-profile-section');
         const previewEl = $('#settings-avatar-preview');
         const removeBtn = $('#btn-remove-avatar');
         
         if (profileSection) {
-            profileSection.style.display = currentUser ? 'block' : 'none';
+            profileSection.style.display = 'block';
         }
         
-        if (previewEl && currentUser) {
-            let users = [];
-            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
-            const userRecord = users.find(u => u.email === currentUser.email) || currentUser;
-            
-            if (userRecord && userRecord.avatar) {
+        let name = 'Guest User';
+        let lang = currentLanguage;
+        let avatar = null;
+        
+        if (currentUser) {
+            name = currentUser.name;
+            lang = currentUser.language || currentLanguage;
+            avatar = currentUser.avatar;
+        } else {
+            name = localStorage.getItem('spendwise_guest_name') || 'Guest User';
+            lang = localStorage.getItem('spendwise_language') || currentLanguage;
+            avatar = localStorage.getItem('spendwise_guest_avatar') || null;
+        }
+        
+        if (previewEl) {
+            if (avatar) {
                 previewEl.textContent = '';
-                previewEl.style.backgroundImage = `url(${userRecord.avatar})`;
+                previewEl.style.backgroundImage = `url(${avatar})`;
                 previewEl.style.backgroundSize = 'cover';
                 previewEl.style.backgroundPosition = 'center';
                 if (removeBtn) removeBtn.style.display = 'block';
             } else {
-                previewEl.textContent = currentUser.name.substring(0, 2).toUpperCase();
+                previewEl.textContent = name.substring(0, 2).toUpperCase();
                 previewEl.style.backgroundImage = '';
                 if (removeBtn) removeBtn.style.display = 'none';
             }
-            
-            const profileNameInput = $('#settings-profile-name');
-            if (profileNameInput) {
-                profileNameInput.value = currentUser.name;
-            }
-            
-            const profileLangSelect = $('#settings-profile-lang');
-            if (profileLangSelect) {
-                profileLangSelect.value = currentLanguage;
-            }
+        }
+        
+        const profileNameInput = $('#settings-profile-name');
+        if (profileNameInput) {
+            profileNameInput.value = name;
+        }
+        
+        const profileLangSelect = $('#settings-profile-lang');
+        if (profileLangSelect) {
+            profileLangSelect.value = lang;
         }
         
         const budgets = loadBudgets();
@@ -1776,26 +1843,51 @@
 
     if (settingsSaveBtn) {
         settingsSaveBtn.addEventListener('click', async () => {
-            // Save Profile Name changes
             const profileNameInput = $('#settings-profile-name');
-            if (profileNameInput && currentUser) {
-                const newName = profileNameInput.value.trim();
-                if (newName && newName !== currentUser.name) {
-                    if (isSupabaseConfigured) {
+            const profileLangSelect = $('#settings-profile-lang');
+            
+            let newName = '';
+            let newLang = '';
+
+            const currentName = currentUser ? currentUser.name : (localStorage.getItem('spendwise_guest_name') || 'Guest User');
+
+            if (profileNameInput) {
+                newName = profileNameInput.value.trim();
+            }
+
+            if (profileLangSelect) {
+                newLang = profileLangSelect.value;
+            }
+
+            const nameChanged = newName && newName !== currentName;
+
+            if (currentUser) {
+                // Cloud user save
+                if (isSupabaseConfigured && (nameChanged || newLang)) {
+                    try {
+                        const updateData = {};
+                        if (nameChanged) updateData.name = newName;
+                        if (newLang) updateData.language = newLang;
+
                         const { error } = await supabase
                             .from('profiles')
-                            .update({ name: newName })
+                            .update(updateData)
                             .eq('id', currentUser.id);
+
                         if (error) {
-                            showToast('Failed to update name in database', 'error');
+                            showToast(error.message || 'Failed to update settings in cloud database', 'error');
                             return;
                         }
+                    } catch (e) {
+                        showToast('Failed to connect to cloud database server', 'error');
+                        return;
                     }
-                    
+                }
+
+                if (nameChanged) {
                     currentUser.name = newName;
                     localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
                     
-                    // Save to user database in localStorage
                     let users = [];
                     try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
                     const idx = users.findIndex(u => u.email === currentUser.email);
@@ -1803,32 +1895,14 @@
                         users[idx].name = newName;
                         localStorage.setItem('spendwise_users', JSON.stringify(users));
                     }
-                    updateProfileUI();
                 }
-            }
 
-            // Save Profile Language changes
-            const profileLangSelect = $('#settings-profile-lang');
-            if (profileLangSelect && currentUser) {
-                const newLang = profileLangSelect.value;
-                if (newLang && newLang !== currentLanguage) {
-                    if (isSupabaseConfigured) {
-                        const { error } = await supabase
-                            .from('profiles')
-                            .update({ language: newLang })
-                            .eq('id', currentUser.id);
-                        if (error) {
-                            showToast('Failed to update language in database', 'error');
-                            return;
-                        }
-                    }
-                    
+                if (newLang) {
                     currentLanguage = newLang;
                     currentUser.language = newLang;
                     localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
                     localStorage.setItem('spendwise_language', newLang);
                     
-                    // Save to user database in localStorage
                     let users = [];
                     try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
                     const idx = users.findIndex(u => u.email === currentUser.email);
@@ -1836,9 +1910,23 @@
                         users[idx].language = newLang;
                         localStorage.setItem('spendwise_users', JSON.stringify(users));
                     }
-                    applyTranslations(newLang);
+                }
+            } else {
+                // Guest settings save
+                if (nameChanged) {
+                    localStorage.setItem('spendwise_guest_name', newName);
+                }
+                if (newLang) {
+                    currentLanguage = newLang;
+                    localStorage.setItem('spendwise_language', newLang);
                 }
             }
+
+            // Always apply translations with the selected language
+            if (newLang) {
+                applyTranslations(newLang);
+            }
+            updateProfileUI();
 
             const budgets = {};
             $$('.budget-num-input').forEach(input => {
@@ -1902,7 +1990,7 @@
             const file = avatarFileInput.files[0];
             if (!file) return;
             
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && currentUser) {
                 if (file.type.startsWith('image/')) {
                     const fileExt = file.name.split('.').pop();
                     const filePath = `${currentUser.id}/${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -1951,13 +2039,19 @@
                     reader.onload = function(e) {
                         const base64Data = e.target.result;
                         
-                        // Save to user record in localStorage
-                        let users = [];
-                        try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
-                        const userIdx = users.findIndex(u => u.email === currentUser.email);
-                        if (userIdx !== -1) {
-                            users[userIdx].avatar = base64Data;
-                            localStorage.setItem('spendwise_users', JSON.stringify(users));
+                        if (currentUser) {
+                            // Save to user record in localStorage
+                            let users = [];
+                            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
+                            const userIdx = users.findIndex(u => u.email === currentUser.email);
+                            if (userIdx !== -1) {
+                                users[userIdx].avatar = base64Data;
+                                localStorage.setItem('spendwise_users', JSON.stringify(users));
+                            }
+                            currentUser.avatar = base64Data;
+                        } else {
+                            // Save to guest avatar
+                            localStorage.setItem('spendwise_guest_avatar', base64Data);
                         }
                         
                         // Update preview and display
@@ -1981,7 +2075,7 @@
 
     if (btnRemoveAvatar) {
         btnRemoveAvatar.addEventListener('click', async () => {
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && currentUser) {
                 const { error } = await supabase
                     .from('profiles')
                     .update({ avatar_url: null })
@@ -1994,12 +2088,17 @@
                 
                 currentUser.avatar = null;
             } else {
-                let users = [];
-                try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
-                const userIdx = users.findIndex(u => u.email === currentUser.email);
-                if (userIdx !== -1) {
-                    delete users[userIdx].avatar;
-                    localStorage.setItem('spendwise_users', JSON.stringify(users));
+                if (currentUser) {
+                    let users = [];
+                    try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
+                    const userIdx = users.findIndex(u => u.email === currentUser.email);
+                    if (userIdx !== -1) {
+                        delete users[userIdx].avatar;
+                        localStorage.setItem('spendwise_users', JSON.stringify(users));
+                    }
+                    currentUser.avatar = null;
+                } else {
+                    localStorage.removeItem('spendwise_guest_avatar');
                 }
             }
             
@@ -2011,7 +2110,8 @@
             
             const previewEl = $('#settings-avatar-preview');
             if (previewEl) {
-                previewEl.textContent = currentUser.name.substring(0, 2).toUpperCase();
+                const name = currentUser ? currentUser.name : (localStorage.getItem('spendwise_guest_name') || 'Guest User');
+                previewEl.textContent = name.substring(0, 2).toUpperCase();
                 previewEl.style.backgroundImage = '';
             }
             btnRemoveAvatar.style.display = 'none';
@@ -2200,7 +2300,7 @@
 
             // Set OCR language dynamically based on active app language preference
             let ocrLanguage = 'eng';
-            if (currentLanguage === 'km') {
+            if (currentLanguage === 'kh') {
                 ocrLanguage = 'khm+eng';
             } else if (currentLanguage === 'th') {
                 ocrLanguage = 'tha+eng';
@@ -2276,7 +2376,7 @@
     }
 
     function extractAmount(lines, fullText) {
-        const isKhmerRegion = (currentLanguage === 'km' || currentCurrency === '៛');
+        const isKhmerRegion = (currentLanguage === 'kh' || currentCurrency === '៛');
         const isThaiRegion = (currentLanguage === 'th' || currentCurrency === '฿');
 
         // 1. Prioritized Regional Match
@@ -2613,10 +2713,14 @@
         if (!isSupabaseConfigured) {
             await load();
         }
-        setGreeting();
+        
+        // Apply saved language on startup
+        applyTranslations(currentLanguage);
+        
         dateInput.value = new Date().toISOString().split('T')[0];
         updateMonthLabels();
         updateCurrencyUI();
+        updateProfileUI();
         
         // Direct to Auth page if no active user session, otherwise home page
         if (!currentUser) {
