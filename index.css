@@ -82,8 +82,9 @@ body {
     position: relative; z-index: 1;
     max-width: 520px;
     margin: 0 auto;
-    min-height: 100vh;
-    padding-bottom: calc(var(--nav-height) + 16px);
+    min-height: 100dvh;
+    padding-bottom: calc(var(--nav-height) + 16px + env(safe-area-inset-bottom, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* --- Pages --- */
@@ -106,6 +107,7 @@ body {
     justify-content: space-between;
     margin-bottom: 24px;
     gap: 12px;
+    padding-top: env(safe-area-inset-top, 0px);
 }
 .greeting {
     font-size: 0.82rem;
@@ -308,7 +310,7 @@ body {
     font-size: 0.95rem; font-weight: 700;
     color: var(--accent-red); white-space: nowrap;
 }
-.tx-del {
+.tx-edit, .tx-del {
     background: none; border: none;
     color: var(--text-muted);
     cursor: pointer; padding: 5px;
@@ -316,7 +318,16 @@ body {
     display: flex; align-items: center;
     opacity: 0; transition: all var(--transition-fast);
 }
+.tx-edit {
+    margin-right: 4px;
+}
+.tx-item:hover .tx-edit,
 .tx-item:hover .tx-del { opacity: 1; }
+
+.tx-edit:hover {
+    color: var(--accent-light);
+    background: rgba(108, 92, 231, 0.15);
+}
 .tx-del:hover {
     color: var(--accent-red);
     background: rgba(255,107,107,0.1);
@@ -716,7 +727,7 @@ body {
     bottom: 0; left: 50%;
     transform: translateX(-50%);
     width: 100%; max-width: 520px;
-    height: var(--nav-height);
+    height: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
     display: flex; align-items: center;
     justify-content: space-around;
     background: rgba(10, 10, 30, 0.85);
@@ -1864,6 +1875,34 @@ body {
     outline: none;
     transition: all var(--transition-fast);
 }
+.password-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+.password-input-wrapper input {
+    width: 100%;
+    padding-right: 42px !important;
+}
+.password-toggle-btn {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 4px;
+    transition: color var(--transition-fast);
+    touch-action: manipulation;
+}
+.password-toggle-btn:hover {
+    color: var(--text-primary);
+}
 .auth-form-group input:focus {
     border-color: var(--accent);
     background: rgba(108, 92, 231, 0.05);
@@ -1958,5 +1997,26 @@ body {
 select option {
     background-color: #110d29 !important;
     color: #ffffff !important;
+}
+
+/* ============================================
+   MOBILE RESPONSIVENESS AND TACTILE FIXES
+   ============================================ */
+input[type="text"],
+input[type="date"],
+input[type="email"],
+input[type="password"],
+select,
+.region-select {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
+}
+
+button,
+a,
+.nav-item,
+.cat-btn,
+.month-nav-btn,
+.currency-btn {
+    touch-action: manipulation; /* Removes 300ms click delay on touch screens */
 }
 

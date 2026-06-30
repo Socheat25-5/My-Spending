@@ -6,6 +6,24 @@
 (function () {
     'use strict';
 
+    // ═══════════════════════════════════
+    //  SUPABASE SQL CONFIGURATION
+    // ═══════════════════════════════════
+   const SUPABASE_URL = 'https://your-project-url.supabase.co';
+   const SUPABASE_ANON_KEY = 'your-anon-api-key';
+    
+    // Auto-detect configuration state (fallbacks to LocalStorage if not configured)
+    const isSupabaseConfigured = 
+        SUPABASE_URL !== 'https://your-project-url.supabase.co' && 
+        SUPABASE_ANON_KEY !== 'your-anon-api-key' &&
+        SUPABASE_URL.trim() !== '' &&
+        SUPABASE_ANON_KEY.trim() !== '';
+    
+    let supabase = null;
+    if (isSupabaseConfigured && window.supabase) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
     // ─── Constants ───
     const STORAGE_KEY = 'spendwise_expenses';
     const CATEGORIES = {
@@ -38,7 +56,7 @@
             scan_receipt: "Scan Receipt",
             monthly_summary: "Monthly Summary",
             total_spent: "Total Spent",
-            daily_trends: "Daily Spending Trends",
+            daily_trends: "Daily Chart",
             category_breakdown: "Category Breakdown",
             search_placeholder: "Search transactions...",
             settings: "Settings",
@@ -62,6 +80,7 @@
             confirm_password: "Confirm Password",
             create_account: "Create Account",
             language: "Language",
+            update_expense: "Update Expense",
             cat_food: "Food",
             cat_transport: "Transport",
             cat_shopping: "Shopping",
@@ -71,7 +90,7 @@
             cat_education: "Education",
             cat_other: "Other"
         },
-        km: {
+        kh: {
             home: "ទំព័រដើម",
             add: "បន្ថែម",
             summary: "សង្ខេប",
@@ -89,7 +108,7 @@
             scan_receipt: "ស្កេនវិក្កយបត្រ",
             monthly_summary: "សេចក្តីសង្ខេបប្រចាំខែ",
             total_spent: "ចំណាយសរុប",
-            daily_trends: "និន្នាការចំណាយប្រចាំថ្ងៃ",
+            daily_trends: "គំនូសតាងប្រចាំថ្ងៃ",
             category_breakdown: "ចំណាយតាមប្រភេទ",
             search_placeholder: "ស្វែងរកប្រតិបត្តិការ...",
             settings: "ការកំណត់",
@@ -113,6 +132,7 @@
             confirm_password: "បញ្ជាក់ពាក្យសម្ងាត់",
             create_account: "បង្កើតគណនី",
             language: "ភាសា",
+            update_expense: "ធ្វើបច្ចុប្បន្នភាពការចំណាយ",
             cat_food: "អាហារ",
             cat_transport: "ដឹកជញ្ជូន",
             cat_shopping: "ទិញអីវ៉ាន់",
@@ -140,7 +160,7 @@
             scan_receipt: "สแกนใบเสร็จ",
             monthly_summary: "สรุปประจำเดือน",
             total_spent: "ยอดใช้จ่ายทั้งหมด",
-            daily_trends: "แนวโน้มการใช้จ่ายรายวัน",
+            daily_trends: "กราฟรายวัน",
             category_breakdown: "สัดส่วนตามหมวดหมู่",
             search_placeholder: "ค้นหารายการใช้จ่าย...",
             settings: "การตั้งค่า",
@@ -164,6 +184,7 @@
             confirm_password: "ยืนยันรหัสผ่าน",
             create_account: "สร้างบัญชี",
             language: "ภาษา",
+            update_expense: "อัปเดตรายการใช้จ่าย",
             cat_food: "อาหาร",
             cat_transport: "ขนส่ง",
             cat_shopping: "ช้อปปิ้ง",
@@ -180,6 +201,7 @@
     let expenses = [];
     let selectedCategory = null;
     let deleteTargetId = null;
+    let editingExpenseId = null;
     let currentMonth = new Date().getMonth();
     let currentYear = new Date().getFullYear();
     let activePage = 'home';
@@ -334,7 +356,13 @@
     }
 
     function fmtDate(d) {
-        return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (!d) return '';
+        const parts = d.split('-');
+        if (parts.length < 3) return d;
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        return new Date(year, month, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
     function monthName(m, y) {
@@ -343,6 +371,17 @@
 
     function daysInMonth(m, y) {
         return new Date(y, m + 1, 0).getDate();
+    }
+
+    function getDaysElapsed() {
+        const today = new Date();
+        if (currentYear === today.getFullYear() && currentMonth === today.getMonth()) {
+            return today.getDate();
+        }
+        if (currentYear > today.getFullYear() || (currentYear === today.getFullYear() && currentMonth > today.getMonth())) {
+            return 1;
+        }
+        return daysInMonth(currentMonth, currentYear);
     }
 
     function escapeHtml(t) {
@@ -397,6 +436,28 @@
         
         // Re-generate welcome greeting
         setGreeting();
+
+        // Refresh submit button text
+        updateSubmitButtonText();
+    }
+
+    function updateSubmitButtonText() {
+        const btnTextEl = submitBtn.querySelector('.btn-text');
+        if (!btnTextEl) return;
+        
+        if (editingExpenseId) {
+            const key = 'update_expense';
+            const val = (TRANSLATIONS[currentLanguage] && TRANSLATIONS[currentLanguage][key])
+                ? TRANSLATIONS[currentLanguage][key]
+                : 'Update Expense';
+            btnTextEl.textContent = val;
+        } else {
+            const key = 'add_expense';
+            const val = (TRANSLATIONS[currentLanguage] && TRANSLATIONS[currentLanguage][key])
+                ? TRANSLATIONS[currentLanguage][key]
+                : 'Add Expense';
+            btnTextEl.textContent = val;
+        }
     }
 
     function showToast(msg, type = 'success') {
@@ -421,24 +482,110 @@
         return `${STORAGE_KEY}_${currentUser.email}`;
     }
 
-    function load() {
-        try { expenses = JSON.parse(localStorage.getItem(getStorageKey())) || []; }
-        catch { expenses = []; }
+    async function load() {
+        if (isSupabaseConfigured && currentUser) {
+            try {
+                const { data, error } = await supabase
+                    .from('expenses')
+                    .select('*')
+                    .eq('user_id', currentUser.id);
+                if (error) throw error;
+                expenses = data || [];
+            } catch (err) {
+                console.error('Supabase load error:', err);
+                showToast('Failed to load transactions from cloud database', 'error');
+                expenses = [];
+            }
+        } else {
+            try { expenses = JSON.parse(localStorage.getItem(getStorageKey())) || []; }
+            catch { expenses = []; }
+        }
     }
 
     function save() {
-        localStorage.setItem(getStorageKey(), JSON.stringify(expenses));
+        if (!isSupabaseConfigured) {
+            localStorage.setItem(getStorageKey(), JSON.stringify(expenses));
+        }
+    }
+
+    // ─── Supabase User Sync Helper ───
+    async function syncSupabaseUser(user) {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', user.id)
+                .single();
+            
+            if (error && error.code !== 'PGRST116') throw error;
+            
+            if (data) {
+                currentUser = {
+                    id: user.id,
+                    name: data.name,
+                    email: user.email,
+                    country: data.country,
+                    language: data.language,
+                    avatar: data.avatar_url
+                };
+            } else {
+                // Fallback / Create profile if missing
+                const country = authCountrySelect ? authCountrySelect.value : 'cambodia';
+                const language = authLangSelect ? authLangSelect.value : 'kh';
+                const name = user.user_metadata?.full_name || 'User';
+                
+                const { error: insertErr } = await supabase.from('profiles').insert({
+                    id: user.id,
+                    name: name,
+                    country: country,
+                    language: language
+                });
+                if (insertErr) console.error('Error inserting default profile:', insertErr);
+                
+                currentUser = {
+                    id: user.id,
+                    name: name,
+                    email: user.email,
+                    country: country,
+                    language: language,
+                    avatar: null
+                };
+            }
+            updateProfileUI();
+            await load();
+            renderAll();
+        } catch (err) {
+            console.error('syncSupabaseUser error:', err);
+        }
     }
 
     // ─── Auth Logic ───
-    function loadAuth() {
-        try {
-            const storedUser = localStorage.getItem('spendwise_current_user');
-            if (storedUser) {
-                currentUser = JSON.parse(storedUser);
-                updateProfileUI();
+    async function loadAuth() {
+        if (isSupabaseConfigured) {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                await syncSupabaseUser(session.user);
             }
-        } catch (e) {}
+            
+            supabase.auth.onAuthStateChange(async (event, session) => {
+                if (session) {
+                    await syncSupabaseUser(session.user);
+                } else {
+                    currentUser = null;
+                    updateProfileUI();
+                    expenses = [];
+                    renderAll();
+                }
+            });
+        } else {
+            try {
+                const storedUser = localStorage.getItem('spendwise_current_user');
+                if (storedUser) {
+                    currentUser = JSON.parse(storedUser);
+                    updateProfileUI();
+                }
+            } catch (e) {}
+        }
     }
 
     function updateProfileUI() {
@@ -450,27 +597,31 @@
             const userRecord = users.find(u => u.email === currentUser.email) || currentUser;
             
             // Apply user-specific language/country settings
-            if (userRecord.language) {
-                currentLanguage = userRecord.language;
+            const activeLang = currentUser.language || userRecord.language;
+            const activeCountry = currentUser.country || userRecord.country;
+            const activeAvatar = currentUser.avatar || userRecord.avatar;
+            
+            if (activeLang) {
+                currentLanguage = activeLang;
                 localStorage.setItem('spendwise_language', currentLanguage);
             }
-            if (userRecord.country) {
-                if (userRecord.country === 'cambodia') currentCurrency = '៛';
-                else if (userRecord.country === 'thailand') currentCurrency = '฿';
+            if (activeCountry) {
+                if (activeCountry === 'cambodia') currentCurrency = '៛';
+                else if (activeCountry === 'thailand') currentCurrency = '฿';
                 localStorage.setItem('spendwise_currency', currentCurrency);
                 updateCurrencyUI();
             }
             
             applyTranslations(currentLanguage); // Will call setGreeting internally
             
-            if (userRecord && userRecord.avatar) {
+            if (activeAvatar) {
                 avatarInitials.style.display = 'none';
-                profileAvatarBtn.style.backgroundImage = `url(${userRecord.avatar})`;
+                profileAvatarBtn.style.backgroundImage = `url(${activeAvatar})`;
                 profileAvatarBtn.style.backgroundSize = 'cover';
                 profileAvatarBtn.style.backgroundPosition = 'center';
                 
                 dropdownAvatar.textContent = '';
-                dropdownAvatar.style.backgroundImage = `url(${userRecord.avatar})`;
+                dropdownAvatar.style.backgroundImage = `url(${activeAvatar})`;
                 dropdownAvatar.style.backgroundSize = 'cover';
                 dropdownAvatar.style.backgroundPosition = 'center';
             } else {
@@ -495,56 +646,107 @@
         }
     }
 
-    function handleLogin(email, password) {
-        // Simple mock authentication using localStorage users list
-        let users = [];
-        try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
-        const user = users.find(u => u.email === email && u.password === password);
-        if (user) {
-            currentUser = { id: user.id, name: user.name, email: user.email, country: user.country, language: user.language };
+    async function handleLogin(email, password) {
+        if (isSupabaseConfigured) {
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                showToast(error.message, 'error');
+            } else {
+                showToast('Logged in successfully!');
+                switchPage('home');
+            }
+        } else {
+            // Simple mock authentication using localStorage users list
+            let users = [];
+            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
+            const user = users.find(u => u.email === email && u.password === password);
+            if (user) {
+                currentUser = { id: user.id, name: user.name, email: user.email, country: user.country, language: user.language };
+                localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
+                updateProfileUI();
+                switchPage('home');
+                await load(); // load user's specific expenses
+                renderAll();
+                showToast('Logged in successfully!');
+            } else {
+                showToast('Invalid email or password', 'error');
+            }
+        }
+    }
+
+    async function handleRegister(name, email, password) {
+        const country = authCountrySelect ? authCountrySelect.value : 'cambodia';
+        const language = authLangSelect ? authLangSelect.value : 'kh';
+
+        if (isSupabaseConfigured) {
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: { full_name: name }
+                }
+            });
+            
+            if (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+            
+            if (data?.user) {
+                // Insert profile record
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .insert({
+                        id: data.user.id,
+                        name: name,
+                        country: country,
+                        language: language
+                    });
+                if (profileError) {
+                    console.error('Profile creation error:', profileError);
+                }
+                showToast('Account created! Please check your email for confirmation.', 'success');
+                switchPage('home');
+            }
+        } else {
+            let users = [];
+            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
+            if (users.find(u => u.email === email)) {
+                showToast('Email already registered', 'error');
+                return;
+            }
+            
+            const newUser = { id: uid(), name, email, password, country, language };
+            users.push(newUser);
+            localStorage.setItem('spendwise_users', JSON.stringify(users));
+            
+            currentUser = { id: newUser.id, name: newUser.name, email: newUser.email, country: newUser.country, language: newUser.language };
             localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
             updateProfileUI();
             switchPage('home');
-            load(); // load user's specific expenses
+            await load();
             renderAll();
-            showToast('Logged in successfully!');
+            showToast('Account created successfully!');
+        }
+    }
+
+    async function logout() {
+        if (isSupabaseConfigured) {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+                showToast(error.message, 'error');
+            } else {
+                showToast('Logged out');
+            }
         } else {
-            showToast('Invalid email or password', 'error');
+            currentUser = null;
+            localStorage.removeItem('spendwise_current_user');
+            updateProfileUI();
+            switchPage('auth');
+            await load(); // load default anonymous expenses
+            renderAll();
+            showToast('Logged out');
         }
-    }
-
-    function handleRegister(name, email, password) {
-        let users = [];
-        try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(e){}
-        if (users.find(u => u.email === email)) {
-            showToast('Email already registered', 'error');
-            return;
-        }
-        
-        const country = authCountrySelect ? authCountrySelect.value : 'cambodia';
-        const language = authLangSelect ? authLangSelect.value : 'km';
-        
-        const newUser = { id: uid(), name, email, password, country, language };
-        users.push(newUser);
-        localStorage.setItem('spendwise_users', JSON.stringify(users));
-        
-        currentUser = { id: newUser.id, name: newUser.name, email: newUser.email, country: newUser.country, language: newUser.language };
-        localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
-        updateProfileUI();
-        switchPage('home');
-        load();
-        renderAll();
-        showToast('Account created successfully!');
-    }
-
-    function logout() {
-        currentUser = null;
-        localStorage.removeItem('spendwise_current_user');
-        updateProfileUI();
-        switchPage('auth');
-        load(); // load default anonymous expenses
-        renderAll();
-        showToast('Logged out');
     }
 
     // ─── Auth Events ───
@@ -642,8 +844,12 @@
     // ─── Data Helpers ───
     function monthExpenses() {
         return expenses.filter((e) => {
-            const d = new Date(e.date + 'T00:00:00');
-            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+            if (!e.date) return false;
+            const parts = e.date.split('-');
+            if (parts.length < 3) return false;
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            return m === currentMonth && y === currentYear;
         });
     }
 
@@ -671,6 +877,20 @@
         navItems.forEach((n) => {
             n.classList.toggle('active', n.dataset.page === name);
         });
+        
+        // Reset editing state if navigating away, or clicking "add" to add a new one
+        if (name !== 'add') {
+            editingExpenseId = null;
+            updateSubmitButtonText();
+        } else if (!editingExpenseId) {
+            // Fresh form
+            form.reset();
+            catBtns.forEach((b) => b.classList.remove('active'));
+            selectedCategory = null;
+            catHidden.value = '';
+            dateInput.value = new Date().toISOString().split('T')[0];
+            updateSubmitButtonText();
+        }
         
         // Hide bottom navigation bar on auth page
         const bottomNav = $('#bottom-nav');
@@ -701,11 +921,11 @@
     function renderHome() {
         const me = monthExpenses();
         const total = me.reduce((s, e) => s + e.amount, 0);
-        const days = daysInMonth(currentMonth, currentYear);
+        const elapsed = getDaysElapsed();
 
         homeTotal.textContent = money(total);
         homeTxCount.textContent = `${me.length} transaction${me.length !== 1 ? 's' : ''}`;
-        homeDailyAvg.textContent = `${money(me.length > 0 ? total / days : 0)}/day`;
+        homeDailyAvg.textContent = `${money(me.length > 0 ? total / elapsed : 0)}/day`;
         homeMonthLabel.textContent = monthName(currentMonth, currentYear);
 
         // Recent transactions (last 5)
@@ -765,8 +985,10 @@
         const dailySpending = Array(days).fill(0);
 
         me.forEach(e => {
-            const ed = new Date(e.date + 'T00:00:00');
-            const d = ed.getDate();
+            if (!e.date) return;
+            const parts = e.date.split('-');
+            if (parts.length < 3) return;
+            const d = parseInt(parts[2], 10);
             if (d >= 1 && d <= days) {
                 dailySpending[d - 1] += e.amount;
             }
@@ -925,11 +1147,11 @@
     function renderSummary() {
         const me = monthExpenses();
         const total = me.reduce((s, e) => s + e.amount, 0);
-        const days = daysInMonth(currentMonth, currentYear);
+        const elapsed = getDaysElapsed();
 
         summaryTotal.textContent = moneyShort(total);
         summaryCount.textContent = me.length;
-        summaryAvg.textContent = moneyShort(me.length > 0 ? total / days : 0);
+        summaryAvg.textContent = moneyShort(me.length > 0 ? total / elapsed : 0);
         summaryMonthLabel.textContent = monthName(currentMonth, currentYear);
         donutCenterValue.textContent = moneyShort(total);
 
@@ -1044,6 +1266,9 @@
                 </div>
             </div>
             <span class="tx-amount">-${money(e.amount)}</span>
+            <button class="tx-edit" data-id="${e.id}" aria-label="Edit" title="Edit">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
             <button class="tx-del" data-id="${e.id}" aria-label="Delete" title="Delete">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </button>
@@ -1213,7 +1438,7 @@
     });
 
     // Form submission
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const amount = parseFloat(amountInput.value);
         const date = dateInput.value;
@@ -1225,23 +1450,66 @@
         if (!desc) { showToast('Enter a description', 'error'); descInput.focus(); return; }
         if (!cat) { showToast('Pick a category', 'error'); return; }
 
-        expenses.push({ id: uid(), amount, date, description: desc, category: cat, createdAt: new Date().toISOString() });
-        save();
+        if (editingExpenseId) {
+            // Update existing expense
+            if (isSupabaseConfigured) {
+                const { error } = await supabase.from('expenses').update({
+                    amount,
+                    date,
+                    description: desc,
+                    category: cat
+                }).eq('id', editingExpenseId);
+                
+                if (error) {
+                    showToast('Failed to update expense in cloud database', 'error');
+                    return;
+                }
+            }
+            
+            const exp = expenses.find((x) => x.id === editingExpenseId);
+            if (exp) {
+                exp.amount = amount;
+                exp.date = date;
+                exp.description = desc;
+                exp.category = cat;
+            }
+            save();
+            showToast('Expense updated successfully!', 'success');
+            editingExpenseId = null;
+            updateSubmitButtonText();
+        } else {
+            // Add new expense
+            if (isSupabaseConfigured) {
+                const { data, error } = await supabase.from('expenses').insert({
+                    amount,
+                    date,
+                    description: desc,
+                    category: cat,
+                    user_id: currentUser.id
+                }).select();
+                
+                if (error) {
+                    showToast('Failed to save expense to cloud database', 'error');
+                    return;
+                }
+                if (data && data.length > 0) {
+                    expenses.push(data[0]);
+                }
+            } else {
+                expenses.push({ id: uid(), amount, date, description: desc, category: cat, createdAt: new Date().toISOString() });
+                save();
+            }
+            showToast(`Added ${money(amount)} for "${desc}"`, 'success');
+        }
 
         // Switch view to the expense's month
-        const ed = new Date(date + 'T00:00:00');
-        currentMonth = ed.getMonth();
-        currentYear = ed.getFullYear();
-
-        // Success animation
-        submitBtn.classList.add('success');
-        submitBtn.querySelector('.btn-text').textContent = '✓ Added!';
-        setTimeout(() => {
-            submitBtn.classList.remove('success');
-            submitBtn.querySelector('.btn-text').textContent = 'Add Expense';
-        }, 1400);
-
-        showToast(`Added ${money(amount)} for "${desc}"`, 'success');
+        if (date) {
+            const parts = date.split('-');
+            if (parts.length >= 3) {
+                currentMonth = parseInt(parts[1], 10) - 1;
+                currentYear = parseInt(parts[0], 10);
+            }
+        }
 
         // Reset form
         form.reset();
@@ -1250,7 +1518,39 @@
         catHidden.value = '';
         dateInput.value = new Date().toISOString().split('T')[0];
 
+        // Switch page to home automatically to show updated list
+        switchPage('home');
         renderAll();
+    });
+
+    // Edit buttons (delegation on both lists)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.tx-edit');
+        if (!btn) return;
+        const editId = btn.dataset.id;
+        const exp = expenses.find((x) => x.id === editId);
+        if (exp) {
+            // Set editing ID
+            editingExpenseId = exp.id;
+            
+            // Populate form
+            amountInput.value = exp.amount;
+            descInput.value = exp.description;
+            dateInput.value = exp.date;
+            
+            // Set category
+            selectedCategory = exp.category;
+            catHidden.value = exp.category;
+            catBtns.forEach((b) => {
+                b.classList.toggle('active', b.dataset.category === exp.category);
+            });
+            
+            // Update submit button text to localized "Update"
+            updateSubmitButtonText();
+            
+            // Switch to the Add page
+            switchPage('add');
+        }
     });
 
     // Delete buttons (delegation on both lists)
@@ -1268,8 +1568,15 @@
         deleteTargetId = null;
     });
 
-    modalDeleteBtn.addEventListener('click', () => {
+    modalDeleteBtn.addEventListener('click', async () => {
         if (deleteTargetId) {
+            if (isSupabaseConfigured) {
+                const { error } = await supabase.from('expenses').delete().eq('id', deleteTargetId);
+                if (error) {
+                    showToast('Failed to delete expense from cloud database', 'error');
+                    return;
+                }
+            }
             expenses = expenses.filter((x) => x.id !== deleteTargetId);
             save();
             renderAll();
@@ -1466,12 +1773,23 @@
     if (settingsCancelBtn) settingsCancelBtn.addEventListener('click', closeSettings);
 
     if (settingsSaveBtn) {
-        settingsSaveBtn.addEventListener('click', () => {
+        settingsSaveBtn.addEventListener('click', async () => {
             // Save Profile Name changes
             const profileNameInput = $('#settings-profile-name');
             if (profileNameInput && currentUser) {
                 const newName = profileNameInput.value.trim();
                 if (newName && newName !== currentUser.name) {
+                    if (isSupabaseConfigured) {
+                        const { error } = await supabase
+                            .from('profiles')
+                            .update({ name: newName })
+                            .eq('id', currentUser.id);
+                        if (error) {
+                            showToast('Failed to update name in database', 'error');
+                            return;
+                        }
+                    }
+                    
                     currentUser.name = newName;
                     localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
                     
@@ -1492,6 +1810,17 @@
             if (profileLangSelect && currentUser) {
                 const newLang = profileLangSelect.value;
                 if (newLang && newLang !== currentLanguage) {
+                    if (isSupabaseConfigured) {
+                        const { error } = await supabase
+                            .from('profiles')
+                            .update({ language: newLang })
+                            .eq('id', currentUser.id);
+                        if (error) {
+                            showToast('Failed to update language in database', 'error');
+                            return;
+                        }
+                    }
+                    
                     currentLanguage = newLang;
                     currentUser.language = newLang;
                     localStorage.setItem('spendwise_current_user', JSON.stringify(currentUser));
@@ -1567,48 +1896,109 @@
     }
 
     if (avatarFileInput) {
-        avatarFileInput.addEventListener('change', () => {
+        avatarFileInput.addEventListener('change', async () => {
             const file = avatarFileInput.files[0];
-            if (file && file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const base64Data = e.target.result;
+            if (!file) return;
+            
+            if (isSupabaseConfigured) {
+                if (file.type.startsWith('image/')) {
+                    const fileExt = file.name.split('.').pop();
+                    const filePath = `${currentUser.id}/${Math.random().toString(36).substring(2)}.${fileExt}`;
                     
-                    // Save to user record in localStorage
-                    let users = [];
-                    try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
-                    const userIdx = users.findIndex(u => u.email === currentUser.email);
-                    if (userIdx !== -1) {
-                        users[userIdx].avatar = base64Data;
-                        localStorage.setItem('spendwise_users', JSON.stringify(users));
+                    showToast('Uploading profile picture...', 'info');
+                    
+                    const { data, error: uploadError } = await supabase.storage
+                        .from('avatars')
+                        .upload(filePath, file, { upsert: true });
+                        
+                    if (uploadError) {
+                        showToast('Upload failed: ' + uploadError.message, 'error');
+                        return;
                     }
                     
-                    // Update preview and display
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('avatars')
+                        .getPublicUrl(filePath);
+                        
+                    const { error: profileError } = await supabase
+                        .from('profiles')
+                        .update({ avatar_url: publicUrl })
+                        .eq('id', currentUser.id);
+                        
+                    if (profileError) {
+                        showToast('Failed to save profile picture', 'error');
+                        return;
+                    }
+                    
+                    currentUser.avatar = publicUrl;
                     updateProfileUI();
                     
                     const previewEl = $('#settings-avatar-preview');
                     if (previewEl) {
                         previewEl.textContent = '';
-                        previewEl.style.backgroundImage = `url(${base64Data})`;
+                        previewEl.style.backgroundImage = `url(${publicUrl})`;
                         previewEl.style.backgroundSize = 'cover';
                         previewEl.style.backgroundPosition = 'center';
                     }
                     if (btnRemoveAvatar) btnRemoveAvatar.style.display = 'block';
                     showToast('Profile picture updated successfully!');
-                };
-                reader.readAsDataURL(file);
+                }
+            } else {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const base64Data = e.target.result;
+                        
+                        // Save to user record in localStorage
+                        let users = [];
+                        try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
+                        const userIdx = users.findIndex(u => u.email === currentUser.email);
+                        if (userIdx !== -1) {
+                            users[userIdx].avatar = base64Data;
+                            localStorage.setItem('spendwise_users', JSON.stringify(users));
+                        }
+                        
+                        // Update preview and display
+                        updateProfileUI();
+                        
+                        const previewEl = $('#settings-avatar-preview');
+                        if (previewEl) {
+                            previewEl.textContent = '';
+                            previewEl.style.backgroundImage = `url(${base64Data})`;
+                            previewEl.style.backgroundSize = 'cover';
+                            previewEl.style.backgroundPosition = 'center';
+                        }
+                        if (btnRemoveAvatar) btnRemoveAvatar.style.display = 'block';
+                        showToast('Profile picture updated successfully!');
+                    };
+                    reader.readAsDataURL(file);
+                }
             }
         });
     }
 
     if (btnRemoveAvatar) {
-        btnRemoveAvatar.addEventListener('click', () => {
-            let users = [];
-            try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
-            const userIdx = users.findIndex(u => u.email === currentUser.email);
-            if (userIdx !== -1) {
-                delete users[userIdx].avatar;
-                localStorage.setItem('spendwise_users', JSON.stringify(users));
+        btnRemoveAvatar.addEventListener('click', async () => {
+            if (isSupabaseConfigured) {
+                const { error } = await supabase
+                    .from('profiles')
+                    .update({ avatar_url: null })
+                    .eq('id', currentUser.id);
+                
+                if (error) {
+                    showToast('Failed to remove profile picture', 'error');
+                    return;
+                }
+                
+                currentUser.avatar = null;
+            } else {
+                let users = [];
+                try { users = JSON.parse(localStorage.getItem('spendwise_users')) || []; } catch(err){}
+                const userIdx = users.findIndex(u => u.email === currentUser.email);
+                if (userIdx !== -1) {
+                    delete users[userIdx].avatar;
+                    localStorage.setItem('spendwise_users', JSON.stringify(users));
+                }
             }
             
             // Reset input
@@ -2188,12 +2578,39 @@
         showToast('Receipt scanned successfully!', 'success');
     }
 
+    // Toggle password visibility (eye icon)
+    document.addEventListener('click', (e) => {
+        const toggle = e.target.closest('.password-toggle-btn');
+        if (!toggle) return;
+        
+        const wrapper = toggle.closest('.password-input-wrapper');
+        if (!wrapper) return;
+        
+        const input = wrapper.querySelector('input');
+        if (!input) return;
+        
+        const showIcon = toggle.querySelector('.eye-icon-show');
+        const hideIcon = toggle.querySelector('.eye-icon-hide');
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            if (showIcon) showIcon.style.display = 'none';
+            if (hideIcon) hideIcon.style.display = 'block';
+        } else {
+            input.type = 'password';
+            if (showIcon) showIcon.style.display = 'block';
+            if (hideIcon) hideIcon.style.display = 'none';
+        }
+    });
+
     // ═══════════════════════════════════
     //  INIT
     // ═══════════════════════════════════
-    function init() {
-        loadAuth();
-        load();
+    async function init() {
+        await loadAuth();
+        if (!isSupabaseConfigured) {
+            await load();
+        }
         setGreeting();
         dateInput.value = new Date().toISOString().split('T')[0];
         updateMonthLabels();
